@@ -60,7 +60,7 @@ match = {"solution_id": project["solutions"][0]["id"]}
 call("POST", p + "/match", "expert-1", match)
 call("POST", p + "/match", "expert-1", match)
 call("POST", p + "/pool", body={"amount": 1000000})
-profit = {"amount": 100000, "key": "pilot-profit"}
+profit = {"amount": 100000}
 call("POST", p + "/profit", body=profit, expected=409)
 for user, amount in [("investor-a", 600000), ("investor-b", 400000)]:
     investment = {"amount": amount, "key": "investment-" + user}
@@ -68,7 +68,8 @@ for user, amount in [("investor-a", 600000), ("investor-b", 400000)]:
     call("POST", p + "/investments", user, investment)
 call("POST", p + "/investments", "investor-c", {"amount": 1, "key": "excess"}, 409)
 call("POST", p + "/profit", body=profit)
-call("POST", p + "/profit", body=profit)
+call("POST", p + "/profit", body=profit)  # same profit again: no-op
+call("POST", p + "/profit", body={"amount": 100001}, expected=409)
 for user, amount in [("investor-a", 60000), ("investor-b", 40000)]:
     project = next(x for x in call("GET", "/state", user)["projects"] if x["id"] == pid)
     assert project["pool"]["status"] == "distributed"

@@ -42,16 +42,13 @@ func (s *PoolsService) Create(ctx context.Context, u models.User, id string, amo
 	})
 }
 
-// fundingPool Validate match, pool, amount and operation key before a financial operation.
-func fundingPool(p *models.Problem, amount int64, key string) (*models.Pool, error) {
+// fundingPool Validate match, pool and amount before a financial operation.
+func fundingPool(p *models.Problem, amount int64) (*models.Pool, error) {
 	if p.Match == nil || p.Pool == nil {
 		return nil, fail(409, "Нет подтверждённого матча и пула")
 	}
 	if !validation.Money(amount) {
 		return nil, fail(422, "Сумма должна быть положительным целым в допустимом диапазоне")
-	}
-	if !validation.OperationKey(key) {
-		return nil, fail(422, "Нужен ключ операции (1–128 байт)")
 	}
 
 	return p.Pool, nil

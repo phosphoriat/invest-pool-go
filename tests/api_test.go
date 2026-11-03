@@ -122,7 +122,8 @@ func TestHappyPathAndRejections(t *testing.T) {
 	f.matched(t, id)
 	f.post(t, base+"/pool", "region-other", "region", `{"amount":1000000}`, 403)
 	f.post(t, base+"/pool", "region-tomsk", "region", `{"amount":1000000}`, 200)
-	f.post(t, base+"/profit", "region-tomsk", "region", `{"amount":100000,"key":"profit-1"}`, 409)
+	f.post(t, base+"/profit", "region-tomsk", "region", `{"amount":100000}`, 409)
+	f.post(t, base+"/investments", "investor-a", "investor", `{"amount":1,"key":""}`, 422)
 	f.post(t, base+"/investments", "investor-a", "investor", `{"amount":1.5,"key":"float"}`, 400)
 	f.post(t, base+"/investments", "investor-a", "investor", `{"amount":0,"key":"zero"}`, 422)
 	f.post(t, base+"/investments", "investor-a", "investor", `{"amount":-1,"key":"negative"}`, 422)
@@ -133,10 +134,10 @@ func TestHappyPathAndRejections(t *testing.T) {
 	f.post(t, base+"/investments", "investor-b", "investor", `{"amount":400000,"key":"b-1"}`, 200)
 	f.post(t, base+"/investments", "investor-c", "investor", `{"amount":1,"key":"late"}`, 409)
 	for i := 0; i < 2; i++ {
-		f.post(t, base+"/profit", "region-tomsk", "region", `{"amount":100000,"key":"profit-1"}`, 200)
+		f.post(t, base+"/profit", "region-tomsk", "region", `{"amount":100000}`, 200)
 	}
-	f.post(t, base+"/profit", "region-tomsk", "region", `{"amount":100001,"key":"profit-1"}`, 409)
-	f.post(t, base+"/profit", "region-tomsk", "region", `{"amount":100000,"key":"different"}`, 409)
+	f.post(t, base+"/profit", "region-tomsk", "region", `{"amount":100001}`, 409)
+	f.post(t, base+"/profit", "region-tomsk", "region", `{"amount":100000,"key":"k"}`, 400)
 	ps, _ := f.repo.Problems(context.Background())
 	p := ps[0]
 	if p.Pool.Total != 1000000 || p.Pool.Status != "distributed" || len(p.Pool.Investments) != 2 {
@@ -153,6 +154,9 @@ func TestHappyPathAndRejections(t *testing.T) {
 	counts := map[string]int{}
 	for _, e := range events {
 		counts[e.Name]++
+		if strings.Contains(string(e.Payload), `"key"`) {
+			t.Fatalf("operation key in %s payload: %s", e.Name, e.Payload)
+		}
 		if err := f.events.Audit(context.Background(), e); err != nil {
 			t.Fatal(err)
 		}
@@ -194,9 +198,9 @@ func TestHappyPathAndRejections(t *testing.T) {
 		t.Fatalf("other technologist must see only that the problem is matched: %s", raw)
 	}
 	f.post(t, base+"/solutions", "tech-other", "technologist", `{"text":"Поздно"}`, 409)
-	for _, pair := range [][2]string{{"region-tomsk", "region"}, {"expert-1", "expert"}, {"investor-a", "investor"}} {
+	for _, pair := range [][2]string{{"region-tomsk", "region"}, {"expert-1", "expert"}, {"investor-a", "investor"}, {"tech-water", "technologist"}} {
 		raw := f.request(t, "GET", "/api/state", pair[0], pair[1], nil, 200)
-		if strings.Contains(string(raw), `"a-1"`) || strings.Contains(string(raw), `"b-1"`) {
+		if strings.Contains(string(raw), `"key"`) {
 			t.Fatalf("operation key leaked to %s: %s", pair[0], raw)
 		}
 	}
@@ -236,7 +240,7 @@ func TestConcurrentInvestmentsAndProfit(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, err := f.distributions.Distribute(context.Background(), models.User{ID: "region-tomsk", Role: "region"}, id, 100, "p")
+			_, err := f.distributions.Distribute(context.Background(), models.User{ID: "region-tomsk", Role: "region"}, id, 100)
 			if err != nil {
 				t.Error(err)
 			}
@@ -264,10 +268,10 @@ func TestRestartAndOutboxRecovery(t *testing.T) {
 	base := "/api/problems/" + id
 	f.post(t, base+"/pool", "region-tomsk", "region", `{"amount":1}`, 200)
 	f.post(t, base+"/investments", "investor-a", "investor", `{"amount":1,"key":"a"}`, 200)
-	f.post(t, base+"/profit", "region-tomsk", "region", `{"amount":3,"key":"p"}`, 200)
+	f.post(t, base+"/profit", "region-tomsk", "region", `{"amount":3}`, 200)
 	f.repo.DB.Close()
 	g := setup(t, path)
-	g.post(t, base+"/profit", "region-tomsk", "region", `{"amount":3,"key":"p"}`, 200)
+	g.post(t, base+"/profit", "region-tomsk", "region", `{"amount":3}`, 200)
 	if err := g.bus.Drain(context.Background()); err != nil {
 		t.Fatal(err)
 	}

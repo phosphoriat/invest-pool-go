@@ -7,6 +7,7 @@ import (
 	"github.com/phosphoriat/invest-pool-go/internal/models"
 	"github.com/phosphoriat/invest-pool-go/internal/repository"
 	"github.com/phosphoriat/invest-pool-go/internal/utils"
+	"github.com/phosphoriat/invest-pool-go/internal/validation"
 )
 
 type InvestmentsService struct {
@@ -23,9 +24,12 @@ func (s *InvestmentsService) Invest(ctx context.Context, u models.User, id strin
 	key = strings.TrimSpace(key)
 
 	return s.actions.update(ctx, u, id, "investor", false, func(p *models.Problem) (*models.Event, error) {
-		pool, err := fundingPool(p, amount, key)
+		pool, err := fundingPool(p, amount)
 		if err != nil {
 			return nil, err
+		}
+		if !validation.OperationKey(key) {
+			return nil, fail(422, "Нужен ключ операции (1–128 байт)")
 		}
 
 		for _, i := range pool.Investments {
