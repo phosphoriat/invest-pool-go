@@ -57,21 +57,23 @@ func fundingPool(p *models.Problem, amount int64, key string) (*models.Pool, err
 	return p.Pool, nil
 }
 
-// View Build role-filtered pool views and the public catalogue of open opportunities.
-// Filters freshly decoded aggregates without mutating shared state.
-func (s *PoolsService) View(ctx context.Context, u models.User) ([]models.Problem, []models.Opportunity, error) {
+// View Build role-filtered read models and the public catalogue of open opportunities.
+// Works on freshly decoded aggregates, so filtering never touches shared state.
+func (s *PoolsService) View(ctx context.Context, u models.User) ([]models.ProblemView, []models.Opportunity, error) {
 	all, err := s.actions.repo.Problems(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	visible := []models.Problem{}
+	visible := []models.ProblemView{}
 	opps := []models.Opportunity{}
 
 	for _, p := range all {
 		if u.Role == "investor" && p.Pool != nil && p.Pool.Status == "open" {
 			opps = append(opps, models.Opportunity{ProblemID: p.ID, Title: p.Title, PoolID: p.Pool.ID, Target: p.Pool.Target, Total: p.Pool.Total})
 		}
+
+		v := models.NewProblemView(p)
 
 		switch u.Role {
 		case "region":
@@ -82,38 +84,38 @@ func (s *PoolsService) View(ctx context.Context, u models.User) ([]models.Proble
 		case "expert":
 		case "technologist":
 			own := []models.Solution{}
-			matched := false
+			selected := false
 
-			for _, sol := range p.Solutions {
+			for _, sol := range v.Solutions {
 				if sol.TechnologistID == u.ID {
 					own = append(own, sol)
 					if p.Match != nil && p.Match.SolutionID == sol.ID {
-						matched = true
+						selected = true
 					}
 				}
 			}
 
-			p.Solutions = own
+			v.Solutions = own
 
-			if !matched {
-				p.Pool = nil
-				p.Match = nil
-			} else if p.Pool != nil {
-				p.Pool.Investments = nil
+			// Matched stays true: a losing technologist learns the problem is closed, but not who won
+			if !selected {
+				v.Pool = nil
+				v.Match = nil
+			} else if v.Pool != nil {
+				v.Pool.Investments = nil
 
-				if p.Pool.Distribution != nil {
-					p.Pool.Distribution.Payouts = nil
-					p.Pool.Distribution.Key = ""
+				if d := v.Pool.Distribution; d != nil {
+					v.Pool.Distribution = &models.Distribution{ID: d.ID, Profit: d.Profit}
 				}
 			}
 
 		case "investor":
-			if p.Pool == nil {
+			if v.Pool == nil {
 				continue
 			}
 
-			own := []models.Investment{}
-			for _, inv := range p.Pool.Investments {
+			own := []models.InvestmentView{}
+			for _, inv := range v.Pool.Investments {
 				if inv.InvestorID == u.ID {
 					own = append(own, inv)
 				}
@@ -122,35 +124,34 @@ func (s *PoolsService) View(ctx context.Context, u models.User) ([]models.Proble
 				continue
 			}
 
-			p.Pool.Investments = own
+			v.Pool.Investments = own
 
-			if p.Pool.Distribution != nil {
+			if d := v.Pool.Distribution; d != nil {
 				pays := []models.Payout{}
 
-				for _, pay := range p.Pool.Distribution.Payouts {
+				for _, pay := range d.Payouts {
 					if pay.InvestorID == u.ID {
 						pays = append(pays, pay)
 					}
 				}
 
-				p.Pool.Distribution.Payouts = pays
-				p.Pool.Distribution.Key = ""
+				v.Pool.Distribution = &models.Distribution{ID: d.ID, Profit: d.Profit, Payouts: pays}
 			}
 
 			selected := []models.Solution{}
-			for _, sol := range p.Solutions {
+			for _, sol := range v.Solutions {
 				if p.Match != nil && sol.ID == p.Match.SolutionID {
 					selected = append(selected, sol)
 				}
 			}
 
-			p.Solutions = selected
+			v.Solutions = selected
 
 		default:
 			continue
 		}
 
-		visible = append(visible, p)
+		visible = append(visible, v)
 	}
 
 	return visible, opps, nil

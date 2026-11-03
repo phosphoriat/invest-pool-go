@@ -184,6 +184,22 @@ func TestHappyPathAndRejections(t *testing.T) {
 	if strings.Contains(string(raw), p.Pool.ID) {
 		t.Fatal("pool leaked to other technologist")
 	}
+	var techState struct {
+		Projects []models.ProblemView `json:"projects"`
+	}
+	if err := json.Unmarshal(raw, &techState); err != nil || len(techState.Projects) != 1 {
+		t.Fatalf("other technologist state %s", raw)
+	}
+	if v := techState.Projects[0]; !v.Matched || v.Match != nil || v.Pool != nil {
+		t.Fatalf("other technologist must see only that the problem is matched: %s", raw)
+	}
+	f.post(t, base+"/solutions", "tech-other", "technologist", `{"text":"Поздно"}`, 409)
+	for _, pair := range [][2]string{{"region-tomsk", "region"}, {"expert-1", "expert"}, {"investor-a", "investor"}} {
+		raw := f.request(t, "GET", "/api/state", pair[0], pair[1], nil, 200)
+		if strings.Contains(string(raw), `"a-1"`) || strings.Contains(string(raw), `"b-1"`) {
+			t.Fatalf("operation key leaked to %s: %s", pair[0], raw)
+		}
+	}
 	f.request(t, "GET", "/api/events", "investor-a", "investor", nil, 403)
 	raw = f.request(t, "GET", "/api/events", "region-other", "region", nil, 200)
 	if string(raw) != "[]" {
