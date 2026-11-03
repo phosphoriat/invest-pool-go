@@ -20,10 +20,11 @@ func NewInvestmentsService(repo *repository.ProblemRepository, bus *Bus) *Invest
 }
 
 // Invest Accept a contribution within the target and deduplicate by investor and operation key
-func (s *InvestmentsService) Invest(ctx context.Context, u models.User, id string, amount int64, key string) (string, error) {
+func (s *InvestmentsService) Invest(ctx context.Context, u models.User, id string, amount int64, key string) (Result, error) {
 	key = strings.TrimSpace(key)
+	var res Result
 
-	return s.actions.update(ctx, u, id, "investor", false, func(p *models.Problem) (*models.Event, error) {
+	err := s.actions.update(ctx, u, id, "investor", false, func(p *models.Problem) (*models.Event, error) {
 		pool, err := fundingPool(p, amount)
 		if err != nil {
 			return nil, err
@@ -37,6 +38,7 @@ func (s *InvestmentsService) Invest(ctx context.Context, u models.User, id strin
 				if i.Amount != amount {
 					return nil, fail(409, "Ключ уже использован с другой суммой")
 				}
+				res = Result{ProblemID: p.ID, PoolID: pool.ID, InvestmentID: i.ID, Total: pool.Total, Replayed: true}
 				return nil, nil
 			}
 		}
@@ -52,6 +54,7 @@ func (s *InvestmentsService) Invest(ctx context.Context, u models.User, id strin
 			pool.Status = "funded"
 		}
 
+		res = Result{ProblemID: p.ID, PoolID: pool.ID, InvestmentID: inv.ID, Total: pool.Total}
 		return newEvent(p.ID, "InvestmentAccepted", map[string]any{
 			"pool_id":       pool.ID,
 			"investment_id": inv.ID,
@@ -60,4 +63,9 @@ func (s *InvestmentsService) Invest(ctx context.Context, u models.User, id strin
 			"total":         pool.Total,
 		})
 	})
+	if err != nil {
+		return Result{}, err
+	}
+
+	return res, nil
 }

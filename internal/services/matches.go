@@ -17,10 +17,13 @@ func NewMatchesService(repo *repository.ProblemRepository, bus *Bus) *MatchesSer
 }
 
 // Confirm the expert match and make retries of the same solution idempotent
-func (s *MatchesService) Confirm(ctx context.Context, u models.User, id, solutionID string) (string, error) {
-	return s.actions.update(ctx, u, id, "expert", false, func(p *models.Problem) (*models.Event, error) {
+func (s *MatchesService) Confirm(ctx context.Context, u models.User, id, solutionID string) (Result, error) {
+	res := Result{ProblemID: id, SolutionID: solutionID}
+
+	err := s.actions.update(ctx, u, id, "expert", false, func(p *models.Problem) (*models.Event, error) {
 		if p.Match != nil {
 			if p.Match.SolutionID == solutionID {
+				res.Replayed = true
 				return nil, nil
 			}
 			return nil, fail(409, "Другой матч уже подтверждён")
@@ -39,4 +42,9 @@ func (s *MatchesService) Confirm(ctx context.Context, u models.User, id, solutio
 		p.Match = &models.Match{SolutionID: solutionID, ExpertID: u.ID}
 		return newEvent(p.ID, "SolutionMatched", p.Match)
 	})
+	if err != nil {
+		return Result{}, err
+	}
+
+	return res, nil
 }

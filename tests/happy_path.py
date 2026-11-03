@@ -52,13 +52,10 @@ call(
 call("POST", p + "/solutions", "investor-a", {"text": "Запрещено"}, 403)
 call("POST", p + "/match", body={"solution_id": "none"}, expected=403)
 call("POST", "/problems", "expert-1", {"text": "Подмена роли"}, 403, role="region")
-call("POST", p + "/solutions", "tech-water", {"text": "Модульная фильтрация воды"})
-project = next(
-    x for x in call("GET", "/state", "expert-1")["projects"] if x["id"] == pid
-)
-match = {"solution_id": project["solutions"][0]["id"]}
-call("POST", p + "/match", "expert-1", match)
-call("POST", p + "/match", "expert-1", match)
+solution = call("POST", p + "/solutions", "tech-water", {"text": "Модульная фильтрация воды"})
+match = {"solution_id": solution["solution_id"]}
+assert call("POST", p + "/match", "expert-1", match)["replayed"] is False
+assert call("POST", p + "/match", "expert-1", match)["replayed"] is True
 call("POST", p + "/pool", body={"amount": 1000000})
 profit = {"amount": 100000}
 call("POST", p + "/profit", body=profit, expected=409)
@@ -67,8 +64,12 @@ for user, amount in [("investor-a", 600000), ("investor-b", 400000)]:
     call("POST", p + "/investments", user, investment)
     call("POST", p + "/investments", user, investment)
 call("POST", p + "/investments", "investor-c", {"amount": 1, "key": "excess"}, 409)
-call("POST", p + "/profit", body=profit)
-call("POST", p + "/profit", body=profit)  # same profit again: no-op
+payouts = call("POST", p + "/profit", body=profit)["distribution"]["payouts"]
+assert payouts == [
+    {"investor_id": "investor-a", "amount": 60000},
+    {"investor_id": "investor-b", "amount": 40000},
+], payouts
+assert call("POST", p + "/profit", body=profit)["replayed"] is True  # no-op
 call("POST", p + "/profit", body={"amount": 100001}, expected=409)
 for user, amount in [("investor-a", 60000), ("investor-b", 40000)]:
     project = next(x for x in call("GET", "/state", user)["projects"] if x["id"] == pid)

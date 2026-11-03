@@ -21,8 +21,10 @@ func NewDistributionsService(repo *repository.ProblemRepository, bus *Bus) *Dist
 // Distribute Calculate and persist all payouts for a funded pool in one transaction.
 // A pool has exactly one distribution, so the pool itself is the idempotency key:
 // repeating the same profit is a no-op, a different profit is a conflict.
-func (s *DistributionsService) Distribute(ctx context.Context, u models.User, id string, amount int64) (string, error) {
-	return s.actions.update(ctx, u, id, "region", true, func(p *models.Problem) (*models.Event, error) {
+func (s *DistributionsService) Distribute(ctx context.Context, u models.User, id string, amount int64) (Result, error) {
+	var res Result
+
+	err := s.actions.update(ctx, u, id, "region", true, func(p *models.Problem) (*models.Event, error) {
 		pool, err := fundingPool(p, amount)
 		if err != nil {
 			return nil, err
@@ -31,6 +33,7 @@ func (s *DistributionsService) Distribute(ctx context.Context, u models.User, id
 		if pool.Distribution != nil {
 			d := pool.Distribution
 			if d.Profit == amount {
+				res = Result{ProblemID: p.ID, PoolID: pool.ID, Distribution: d, Replayed: true}
 				return nil, nil
 			}
 
@@ -49,6 +52,12 @@ func (s *DistributionsService) Distribute(ctx context.Context, u models.User, id
 		pool.Distribution = &models.Distribution{ID: utils.NewID(), Profit: amount, Payouts: payouts}
 		pool.Status = "distributed"
 
+		res = Result{ProblemID: p.ID, PoolID: pool.ID, Distribution: pool.Distribution}
 		return newEvent(p.ID, "ProfitDistributed", map[string]any{"pool_id": pool.ID, "distribution": pool.Distribution})
 	})
+	if err != nil {
+		return Result{}, err
+	}
+
+	return res, nil
 }

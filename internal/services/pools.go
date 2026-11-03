@@ -19,8 +19,10 @@ func NewPoolsService(repo *repository.ProblemRepository, bus *Bus) *PoolsService
 }
 
 // Create Create a pool for the owning region after expert confirmation
-func (s *PoolsService) Create(ctx context.Context, u models.User, id string, amount int64) (string, error) {
-	return s.actions.update(ctx, u, id, "region", true, func(p *models.Problem) (*models.Event, error) {
+func (s *PoolsService) Create(ctx context.Context, u models.User, id string, amount int64) (Result, error) {
+	var res Result
+
+	err := s.actions.update(ctx, u, id, "region", true, func(p *models.Problem) (*models.Event, error) {
 		if p.Match == nil {
 			return nil, fail(409, "Сначала эксперт подтверждает матч")
 		}
@@ -38,8 +40,14 @@ func (s *PoolsService) Create(ctx context.Context, u models.User, id string, amo
 			Investments: []models.Investment{},
 		}
 
+		res = Result{ProblemID: p.ID, PoolID: p.Pool.ID}
 		return newEvent(p.ID, "PoolCreated", map[string]any{"pool_id": p.Pool.ID, "target": amount})
 	})
+	if err != nil {
+		return Result{}, err
+	}
+
+	return res, nil
 }
 
 // fundingPool Validate match, pool and amount before a financial operation.

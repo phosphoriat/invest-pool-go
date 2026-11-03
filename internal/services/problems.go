@@ -20,13 +20,14 @@ func NewProblemsService(repo *repository.ProblemRepository, bus *Bus) *ProblemsS
 }
 
 // Publish regional problem and record ProblemPublished
-func (s *ProblemsService) Publish(ctx context.Context, u models.User, text string) (string, error) {
+func (s *ProblemsService) Publish(ctx context.Context, u models.User, text string) (Result, error) {
 	text = strings.TrimSpace(text)
 	if u.Role != "region" {
-		return "", fail(403, "Действие недоступно этой роли")
+		return Result{}, fail(403, "Действие недоступно этой роли")
 	}
 
-	return s.actions.commit(ctx, utils.NewID(), func(p *models.Problem) (*models.Event, error) {
+	id := utils.NewID()
+	err := s.actions.commit(ctx, id, func(p *models.Problem) (*models.Event, error) {
 		if n := utf8.RuneCountInString(text); n < 3 || n > 1000 {
 			return nil, fail(422, "Название: 3–1000 символов")
 		}
@@ -35,4 +36,9 @@ func (s *ProblemsService) Publish(ctx context.Context, u models.User, text strin
 		p.Title = text
 		return newEvent(p.ID, "ProblemPublished", map[string]any{"region_id": u.ID, "title": p.Title})
 	})
+	if err != nil {
+		return Result{}, err
+	}
+
+	return Result{ProblemID: id}, nil
 }

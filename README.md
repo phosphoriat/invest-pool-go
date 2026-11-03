@@ -138,18 +138,23 @@ go test -race ./tests/...
 Все ответы в формате JSON. Ошибки возвращаются как `{"error": "..."}`. Тело запроса — один JSON-объект до 16 КБ,
 неизвестные поля отклоняются.
 
-| Метод и путь                         | Роль              | Тело               | Успех                                       |
-|--------------------------------------|-------------------|--------------------|---------------------------------------------|
-| `GET /health`                        | —                 | —                  | `{"status":"ok"}`                           |
-| `GET /api/users`                     | —                 | —                  | список сидов                                |
-| `GET /api/state`                     | любая             | —                  | `{"projects":[...], "opportunities":[...]}` |
-| `GET /api/events`                    | region, expert    | —                  | события аудита                              |
-| `POST /api/problems`                 | region            | `{"text"}`         | `{"problem_id"}`                            |
-| `POST /api/problems/:id/solutions`   | technologist      | `{"text"}`         | `{"problem_id"}`                            |
-| `POST /api/problems/:id/match`       | expert            | `{"solution_id"}`  | `{"problem_id"}`                            |
-| `POST /api/problems/:id/pool`        | region (владелец) | `{"amount"}`       | `{"problem_id"}`                            |
-| `POST /api/problems/:id/investments` | investor          | `{"amount","key"}` | `{"problem_id"}`                            |
-| `POST /api/problems/:id/profit`      | region (владелец) | `{"amount"}`       | `{"problem_id"}`                            |
+| Метод и путь                         | Роль              | Тело               | Успех                                                                     |
+|--------------------------------------|-------------------|--------------------|---------------------------------------------------------------------------|
+| `GET /health`                        | —                 | —                  | `{"status":"ok"}`                                                         |
+| `GET /api/users`                     | —                 | —                  | список сидов                                                              |
+| `GET /api/state`                     | любая             | —                  | `{"projects":[...], "opportunities":[...]}`                               |
+| `GET /api/events`                    | region, expert    | —                  | события аудита                                                            |
+| `POST /api/problems`                 | region            | `{"text"}`         | `{"problem_id","replayed"}`                                               |
+| `POST /api/problems/:id/solutions`   | technologist      | `{"text"}`         | `{"problem_id","solution_id","replayed"}`                                 |
+| `POST /api/problems/:id/match`       | expert            | `{"solution_id"}`  | `{"problem_id","solution_id","replayed"}`                                 |
+| `POST /api/problems/:id/pool`        | region (владелец) | `{"amount"}`       | `{"problem_id","pool_id","replayed"}`                                     |
+| `POST /api/problems/:id/investments` | investor          | `{"amount","key"}` | `{"problem_id","pool_id","investment_id","total","replayed"}`             |
+| `POST /api/problems/:id/profit`      | region (владелец) | `{"amount"}`       | `{"problem_id","pool_id","distribution":{"id","profit","payouts"},"replayed"}` |
+
+Команды отвечают тем, что создали, поэтому клиенту не нужен лишний `GET /api/state`. `replayed: true` означает
+идемпотентный повтор: состояние не изменилось, событие не опубликовано, а в ответе та же сущность, что и в первый раз.
+Например, повтор `/profit` возвращает уже рассчитанные выплаты. `total` у вклада — сколько уже собрано в
+пуле.
 
 Примеры запросов:
 

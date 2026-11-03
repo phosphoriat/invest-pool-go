@@ -93,17 +93,27 @@ func (f *fixture) project(t *testing.T) string {
 // matched Propose a solution and confirm its match, including a safe confirmation retry.
 func (f *fixture) matched(t *testing.T, id string) {
 	path := "/api/problems/" + id
-	f.post(t, path+"/solutions", "tech-water", "technologist", map[string]any{"text": "Очистка воды"}, 200)
-	ps, _ := f.repo.Problems(context.Background())
-	var sol string
-	for _, p := range ps {
-		if p.ID == id {
-			sol = p.Solutions[0].ID
-		}
+	proposed := result(t, f.post(t, path+"/solutions", "tech-water", "technologist", map[string]any{"text": "Очистка воды"}, 200))
+	if proposed.ProblemID != id || proposed.SolutionID == "" {
+		t.Fatalf("propose result %+v", proposed)
 	}
-	body := map[string]any{"solution_id": sol}
-	f.post(t, path+"/match", "expert-1", "expert", body, 200)
-	f.post(t, path+"/match", "expert-1", "expert", body, 200)
+	body := map[string]any{"solution_id": proposed.SolutionID}
+	if r := result(t, f.post(t, path+"/match", "expert-1", "expert", body, 200)); r.Replayed || r.SolutionID != proposed.SolutionID {
+		t.Fatalf("match result %+v", r)
+	}
+	if r := result(t, f.post(t, path+"/match", "expert-1", "expert", body, 200)); !r.Replayed {
+		t.Fatalf("match retry must be marked as replayed: %+v", r)
+	}
+}
+
+// result Decode a command response.
+func result(t *testing.T, raw []byte) services.Result {
+	t.Helper()
+	var r services.Result
+	if err := json.Unmarshal(raw, &r); err != nil {
+		t.Fatalf("bad command result %s: %v", raw, err)
+	}
+	return r
 }
 
 // TestHappyPathAndRejections Exercise the complete scenario, rejected commands and role-filtered data.
@@ -121,20 +131,30 @@ func TestHappyPathAndRejections(t *testing.T) {
 	f.post(t, "/api/problems", "unknown", "region", `{"text":"bad"}`, 401)
 	f.matched(t, id)
 	f.post(t, base+"/pool", "region-other", "region", `{"amount":1000000}`, 403)
-	f.post(t, base+"/pool", "region-tomsk", "region", `{"amount":1000000}`, 200)
+	if r := result(t, f.post(t, base+"/pool", "region-tomsk", "region", `{"amount":1000000}`, 200)); r.PoolID == "" {
+		t.Fatalf("pool result %+v", r)
+	}
 	f.post(t, base+"/profit", "region-tomsk", "region", `{"amount":100000}`, 409)
 	f.post(t, base+"/investments", "investor-a", "investor", `{"amount":1,"key":""}`, 422)
 	f.post(t, base+"/investments", "investor-a", "investor", `{"amount":1.5,"key":"float"}`, 400)
 	f.post(t, base+"/investments", "investor-a", "investor", `{"amount":0,"key":"zero"}`, 422)
 	f.post(t, base+"/investments", "investor-a", "investor", `{"amount":-1,"key":"negative"}`, 422)
-	f.post(t, base+"/investments", "investor-a", "investor", `{"amount":600000,"key":"a-1"}`, 200)
-	f.post(t, base+"/investments", "investor-a", "investor", `{"amount":600000,"key":"a-1"}`, 200)
+	first := result(t, f.post(t, base+"/investments", "investor-a", "investor", `{"amount":600000,"key":"a-1"}`, 200))
+	retry := result(t, f.post(t, base+"/investments", "investor-a", "investor", `{"amount":600000,"key":"a-1"}`, 200))
+	if first.InvestmentID == "" || first.Total != 600000 || first.Replayed || retry.InvestmentID != first.InvestmentID || !retry.Replayed {
+		t.Fatalf("investment results %+v %+v", first, retry)
+	}
 	f.post(t, base+"/investments", "investor-a", "investor", `{"amount":1,"key":"a-1"}`, 409)
 	f.post(t, base+"/investments", "investor-b", "investor", `{"amount":400001,"key":"too-much"}`, 409)
 	f.post(t, base+"/investments", "investor-b", "investor", `{"amount":400000,"key":"b-1"}`, 200)
 	f.post(t, base+"/investments", "investor-c", "investor", `{"amount":1,"key":"late"}`, 409)
 	for i := 0; i < 2; i++ {
-		f.post(t, base+"/profit", "region-tomsk", "region", `{"amount":100000}`, 200)
+		r := result(t, f.post(t, base+"/profit", "region-tomsk", "region", `{"amount":100000}`, 200))
+		if r.Replayed != (i == 1) || r.Distribution == nil || len(r.Distribution.Payouts) != 2 ||
+			r.Distribution.Payouts[0] != (models.Payout{InvestorID: "investor-a", Amount: 60000}) ||
+			r.Distribution.Payouts[1] != (models.Payout{InvestorID: "investor-b", Amount: 40000}) {
+			t.Fatalf("profit result #%d %+v", i, r)
+		}
 	}
 	f.post(t, base+"/profit", "region-tomsk", "region", `{"amount":100001}`, 409)
 	f.post(t, base+"/profit", "region-tomsk", "region", `{"amount":100000,"key":"k"}`, 400)
