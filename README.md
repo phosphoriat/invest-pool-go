@@ -24,7 +24,7 @@ curl http://localhost:8080/health   # {"status":"ok"}
 ```
 
 Имя проекта `-p invest-pool` важно: кабинет подключается к сети `invest-pool_default`. Данные SQLite хранятся в volume
-`pool-data`. Полная очистка выполняется так: `docker compose -p invest-pool down -v`.
+`pool-data`. Как остановить сервис и удалить данные, описано в разделе [Остановка](#остановка).
 
 ### Локально, без Docker
 
@@ -48,6 +48,21 @@ docker compose up --build -d --wait     # или: npm ci && npm run dev
 ```
 
 Кабинет открывается на http://localhost:5173.
+
+### Остановка
+
+Сначала остановите кабинет, потом API. Кабинет подключён к сети `invest-pool_default`. Пока он работает, `down` для API
+не может удалить сеть и выводит `Network invest-pool_default Resource is still in use`. Контейнер и volume с данными при
+этом всё равно удаляются, а сеть остаётся до следующего `down`.
+
+```sh
+cd invest-pool-react
+docker compose down
+cd ../invest-pool-go
+docker compose -p invest-pool down -v   # -v удаляет volume pool-data со всеми данными SQLite
+```
+
+Без `-v` контейнер останавливается, а данные сохраняются до следующего `up`.
 
 ## Happy-path
 
