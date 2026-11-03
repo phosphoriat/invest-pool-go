@@ -27,10 +27,10 @@ func (h *SolutionsHandler) Propose(c fiber.Ctx) error {
 		return err
 	}
 
-	id, err := h.service.Propose(c.Context(), middleware.User(c), c.Params("id"), request.Text)
+	res, err := h.service.Propose(c.Context(), middleware.User(c), c.Params("id"), request.Text)
 	if err != nil {
 		return err
 	}
 
-	return c.JSON(fiber.Map{"problem_id": id})
+	return c.JSON(res)
 }

@@ -27,10 +27,10 @@ func (h *MatchesHandler) Confirm(c fiber.Ctx) error {
 		return err
 	}
 
-	id, err := h.service.Confirm(c.Context(), middleware.User(c), c.Params("id"), request.SolutionID)
+	res, err := h.service.Confirm(c.Context(), middleware.User(c), c.Params("id"), request.SolutionID)
 	if err != nil {
 		return err
 	}
 
-	return c.JSON(fiber.Map{"problem_id": id})
+	return c.JSON(res)
 }

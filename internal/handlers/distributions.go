@@ -11,8 +11,7 @@ type DistributionsHandler struct {
 	service *services.DistributionsService
 }
 type DistributeProfitRequest struct {
-	Amount int64  `json:"amount"`
-	Key    string `json:"key"`
+	Amount int64 `json:"amount"`
 }
 
 // NewDistributionsHandler Create a new DistributionsHandler instance
@@ -28,10 +27,10 @@ func (h *DistributionsHandler) Distribute(c fiber.Ctx) error {
 		return err
 	}
 
-	id, err := h.service.Distribute(c.Context(), middleware.User(c), c.Params("id"), request.Amount, request.Key)
+	res, err := h.service.Distribute(c.Context(), middleware.User(c), c.Params("id"), request.Amount)
 	if err != nil {
 		return err
 	}
 
-	return c.JSON(fiber.Map{"problem_id": id})
+	return c.JSON(res)
 }

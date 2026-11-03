@@ -3,7 +3,6 @@ package services
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/phosphoriat/invest-pool-go/internal/models"
 	"github.com/phosphoriat/invest-pool-go/internal/repository"
@@ -19,23 +18,26 @@ func NewDistributionsService(repo *repository.ProblemRepository, bus *Bus) *Dist
 	return &DistributionsService{actions: actions{repo: repo, bus: bus}}
 }
 
-// Distribute Calculate and persist all payouts for a funded pool in one idempotent transaction
-func (s *DistributionsService) Distribute(ctx context.Context, u models.User, id string, amount int64, key string) (string, error) {
-	key = strings.TrimSpace(key)
+// Distribute Calculate and persist all payouts for a funded pool in one transaction.
+// A pool has exactly one distribution, so the pool itself is the idempotency key:
+// repeating the same profit is a no-op, a different profit is a conflict.
+func (s *DistributionsService) Distribute(ctx context.Context, u models.User, id string, amount int64) (Result, error) {
+	var res Result
 
-	return s.actions.update(ctx, u, id, "region", true, func(p *models.Problem) (*models.Event, error) {
-		pool, err := fundingPool(p, amount, key)
+	err := s.actions.update(ctx, u, id, "region", true, func(p *models.Problem) (*models.Event, error) {
+		pool, err := fundingPool(p, amount)
 		if err != nil {
 			return nil, err
 		}
 
 		if pool.Distribution != nil {
 			d := pool.Distribution
-			if d.Key == key && d.Profit == amount {
+			if d.Profit == amount {
+				res = Result{ProblemID: p.ID, PoolID: pool.ID, Distribution: d, Replayed: true}
 				return nil, nil
 			}
 
-			return nil, fail(409, "Прибыль этого пилота уже зафиксирована")
+			return nil, fail(409, fmt.Sprintf("Прибыль этого пилота уже зафиксирована: %d", d.Profit))
 		}
 
 		if pool.Status != "funded" || pool.Total != pool.Target {
@@ -47,9 +49,15 @@ func (s *DistributionsService) Distribute(ctx context.Context, u models.User, id
 			return nil, fmt.Errorf("allocate: %w", err)
 		}
 
-		pool.Distribution = &models.Distribution{ID: utils.NewID(), Key: key, Profit: amount, Payouts: payouts}
+		pool.Distribution = &models.Distribution{ID: utils.NewID(), Profit: amount, Payouts: payouts}
 		pool.Status = "distributed"
 
+		res = Result{ProblemID: p.ID, PoolID: pool.ID, Distribution: pool.Distribution}
 		return newEvent(p.ID, "ProfitDistributed", map[string]any{"pool_id": pool.ID, "distribution": pool.Distribution})
 	})
+	if err != nil {
+		return Result{}, err
+	}
+
+	return res, nil
 }

@@ -27,12 +27,12 @@ func (h *PoolsHandler) Create(c fiber.Ctx) error {
 		return err
 	}
 
-	id, err := h.service.Create(c.Context(), middleware.User(c), c.Params("id"), request.Amount)
+	res, err := h.service.Create(c.Context(), middleware.User(c), c.Params("id"), request.Amount)
 	if err != nil {
 		return err
 	}
 
-	return c.JSON(fiber.Map{"problem_id": id})
+	return c.JSON(res)
 }
 
 // State Return projects and opportunities visible to the current user

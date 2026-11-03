@@ -20,10 +20,11 @@ func NewSolutionsService(repo *repository.ProblemRepository, bus *Bus) *Solution
 }
 
 // Propose Attach a technology proposal to a problem that has no confirmed match
-func (s *SolutionsService) Propose(ctx context.Context, u models.User, id, text string) (string, error) {
+func (s *SolutionsService) Propose(ctx context.Context, u models.User, id, text string) (Result, error) {
 	text = strings.TrimSpace(text)
+	var res Result
 
-	return s.actions.update(ctx, u, id, "technologist", false, func(p *models.Problem) (*models.Event, error) {
+	err := s.actions.update(ctx, u, id, "technologist", false, func(p *models.Problem) (*models.Event, error) {
 		if p.Match != nil {
 			return nil, fail(409, "Решение уже выбрано")
 		}
@@ -34,7 +35,12 @@ func (s *SolutionsService) Propose(ctx context.Context, u models.User, id, text 
 
 		sol := models.Solution{ID: utils.NewID(), TechnologistID: u.ID, Description: text}
 		p.Solutions = append(p.Solutions, sol)
+		res = Result{ProblemID: p.ID, SolutionID: sol.ID}
 		return newEvent(p.ID, "SolutionProposed", sol)
-
 	})
+	if err != nil {
+		return Result{}, err
+	}
+
+	return res, nil
 }

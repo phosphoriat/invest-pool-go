@@ -28,10 +28,10 @@ func (h *InvestmentsHandler) Invest(c fiber.Ctx) error {
 		return err
 	}
 
-	id, err := h.service.Invest(c.Context(), middleware.User(c), c.Params("id"), request.Amount, request.Key)
+	res, err := h.service.Invest(c.Context(), middleware.User(c), c.Params("id"), request.Amount, request.Key)
 	if err != nil {
 		return err
 	}
 
-	return c.JSON(fiber.Map{"problem_id": id})
+	return c.JSON(res)
 }
